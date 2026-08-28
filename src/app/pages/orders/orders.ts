@@ -13,6 +13,8 @@ import { ApiService } from '@/app/services/api-service';
 import { PaginatorModule } from 'primeng/paginator';
 import { TooltipModule } from 'primeng/tooltip';
 import { DatePickerModule } from 'primeng/datepicker';
+import { DialogModule } from 'primeng/dialog';
+import { InputNumberModule } from 'primeng/inputnumber';
 
 export type OrderStatus = 'pending' | 'shipped' | 'completed' | 'failed';
 
@@ -61,6 +63,7 @@ interface Customer {
 // row per line item, sharing the same orderId for multi-item orders.
 export interface GroupedOrder {
     orderId: string;
+    internalOrderId: string;
     customer: Customer | null;
     orderStatus: OrderStatus;
     paymentStatus: string;
@@ -78,9 +81,15 @@ export interface GroupedOrder {
     updatedAt: Date; // ISO date string, from the first line item in the order
 }
 
+type EditableOrder = Omit<GroupedOrder, 'customer' | 'shipping' | 'collection'> & {
+    customer: Customer & { address: CustomerAddress };
+    shipping: ShippingInfo;
+    collection: CollectionInfo;
+};
+
 @Component({
     selector: 'app-orders',
-    imports: [CommonModule, FormsModule, ButtonModule, TagModule, TableModule, ToastModule, ConfirmDialogModule, SelectModule, TabsModule, PaginatorModule, TooltipModule, DatePickerModule],
+    imports: [CommonModule, FormsModule, ButtonModule, TagModule, TableModule, ToastModule, ConfirmDialogModule, SelectModule, TabsModule, PaginatorModule, TooltipModule, DatePickerModule, DialogModule, InputNumberModule],
     standalone: true,
     template: `
         <div class="card orders-page">
@@ -92,6 +101,7 @@ export interface GroupedOrder {
                     <div class="page-title">({{ allGroupedOrders.length }}) Orders</div>
                     <div class="page-subtitle">Review and update order status across all customers</div>
                 </div>
+                <button pButton type="button" label="New Order" icon="pi pi-plus" (click)="openNewOrder()"></button>
             </div>
 
             <div class="order-filters">
@@ -114,7 +124,7 @@ export interface GroupedOrder {
                 </p-tablist>
             </p-tabs>
 
-            <div class="orders-list">
+            <div class="orders-table-wrap">
                 @if (loading) {
                     <div class="empty-state">
                         <i class="pi pi-spin pi-spinner empty-icon"></i>
@@ -126,149 +136,76 @@ export interface GroupedOrder {
                         <div>No orders found for this status.</div>
                     </div>
                 } @else {
-                    @for (order of groupedOrders; track order.orderId) {
-                        <div class="order-card" [class]="'accent-' + order.orderStatus">
-                            <div class="accent-bar"></div>
-
-                            <div class="order-card-inner">
-                                <div class="order-card-header">
-                                    <div class="order-id-block">
-                                        <span class="order-id-label">Order ID</span>
-                                        <span class="order-id-value">{{ order.orderId }}</span>
-                                    </div>
-                                    <p-tag [value]="statusLabel(order.orderStatus)" [severity]="statusSeverity(order.orderStatus)" class="status-tag-lg"></p-tag>
-                                </div>
-
-                                <div class="order-card-body">
-                                    <!-- LINE ITEMS -->
-                                    <div class="panel">
-                                        <div class="panel-title"><i class="pi pi-shopping-bag"></i> Items ({{ order.items.length }})</div>
-                                        <div class="line-items">
-                                            @for (item of order.items; track item.id) {
-                                                <div class="line-item">
-                                                    <img [src]="item.imageUrl" alt="" class="line-item-img" />
-                                                    <div class="line-item-info">
-                                                        <div class="line-item-name">{{ item.name }}</div>
-                                                        <div class="line-item-meta">{{ item.brand }} &middot; {{ item.category }}</div>
-                                                    </div>
-                                                    <div class="line-item-qty">&times;{{ item.quantity }}</div>
-                                                    <div class="line-item-price">{{ item.price * item.quantity | currency }}</div>
-                                                </div>
-                                            }
-                                        </div>
-                                    </div>
-
-                                    <!-- CUSTOMER -->
-                                    <div class="panel">
-                                        <div class="panel-title"><i class="pi pi-user"></i> Customer</div>
-                                        @if (order.customer) {
-                                            <div class="customer-card">
-                                                <div class="customer-avatar">{{ initials(order.customer) }}</div>
-                                                <div class="customer-info">
-                                                    <div class="customer-name">{{ order.customer.firstName }} {{ order.customer.lastName }}</div>
-                                                    <div class="customer-contact"><i class="pi pi-envelope"></i> {{ order.customer.email }}</div>
-                                                    <div class="customer-contact"><i class="pi pi-phone"></i> {{ order.customer.phone }}</div>
-                                                    @if (order.customer.address) {
-                                                        <div class="customer-contact">
-                                                            <i class="pi pi-home"></i>
-                                                            {{ order.customer.address.street }}, {{ order.customer.address.city }}
-                                                            @if (order.customer.address.state) {
-                                                                , {{ order.customer.address.state }}
-                                                            }
-                                                            {{ order.customer.address.zipCode }}, {{ order.customer.address.country }}
-                                                        </div>
-                                                    }
-                                                </div>
-                                            </div>
-                                        } @else {
-                                            <div class="muted-text">No customer information available.</div>
-                                        }
-                                    </div>
-
-                                    <!-- FULFILLMENT -->
-                                    <div class="panel">
-                                        <div class="panel-title">
-                                            @if (order.mode === 'delivery') {
-                                                <i class="pi pi-truck"></i> Delivery
-                                            } @else {
-                                                <i class="pi pi-map-marker"></i> Collection
-                                            }
-                                        </div>
-                                        @if (order.mode === 'delivery' && order.shipping) {
-                                            <div class="fulfillment-name">{{ order.shipping.firstName }} {{ order.shipping.lastName }}</div>
-                                            <div class="muted-text">{{ order.shipping.shippingAddress }}, {{ order.shipping.shippingCity }} {{ order.shipping.shippingZipCode }}</div>
-                                        } @else if (order.mode === 'collection' && order.collection) {
-                                            <div class="fulfillment-name">{{ order.collection.collectionLocation }}</div>
-                                            <div class="muted-text">{{ order.collection.collectionDate | date: 'mediumDate' }} at {{ order.collection.collectionTime | date: 'shortTime' }}</div>
-                                        } @else {
-                                            <div class="muted-text">No fulfillment details available.</div>
-                                        }
-
-                                        <div class="payment-row">
-                                            <span class="muted-text">Payment</span>
-                                            <p-tag [value]="order.paymentStatus" [severity]="paymentSeverity(order.paymentStatus)" [rounded]="true"></p-tag>
-                                        </div>
-                                    </div>
-
-                                    <!-- ORDER DATE -->
-                                    <div class="panel">
-                                        <div class="panel-title"><i class="pi pi-truck"></i> Order Placement Date</div>
-                                        <div class="muted-text">
-                                            {{ order.createdAt | date: 'medium' }}
-                                        </div>
-                                    </div>
-                                    <div class="panel">
-                                        <div class="panel-title"><i class="pi pi-refresh"></i> Last Updated</div>
-                                        <div class="muted-text">
-                                            {{ order.updatedAt | date: 'medium' }}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="order-card-footer">
-                                    <div class="total-block">
-                                        <span class="total-label">Order Total</span>
-                                        <span class="total-value">{{ order.total | currency }}</span>
-                                    </div>
-
-                                    <div class="order-actions">
-                                        <div class="action-control">
-                                            <label class="action-label">Payment status</label>
-                                            <p-select [options]="paymentStatusOptions" optionLabel="label" optionValue="value" [(ngModel)]="order.selectedPaymentStatus" [disabled]="order.updatingPayment" class="status-select"> </p-select>
-                                        </div>
-                                        <button
-                                            pButton
-                                            [label]="order.selectedPaymentStatus === order.paymentStatus ? 'No changes' : 'Update payment'"
-                                            icon="pi pi-check"
-                                            [loading]="order.updatingPayment"
-                                            [disabled]="order.selectedPaymentStatus === order.paymentStatus"
-                                            (click)="confirmPaymentStatusUpdate(order)"
-                                        ></button>
-
-                                        <div class="action-control">
-                                            <label class="action-label">Order status</label>
-                                            <p-select [options]="statusOptions" optionLabel="label" optionValue="value" [(ngModel)]="order.selectedStatus" [disabled]="order.updating" class="status-select"> </p-select>
-                                        </div>
-                                        <button
-                                            pButton
-                                            [label]="order.selectedStatus === order.orderStatus ? 'No changes' : 'Update status'"
-                                            icon="pi pi-check"
-                                            [loading]="order.updating"
-                                            [disabled]="order.selectedStatus === order.orderStatus"
-                                            (click)="confirmStatusUpdate(order)"
-                                        ></button>
-
-                                        <button pButton icon="pi pi-trash" severity="danger" [loading]="order.deleting" (click)="confirmDeleteOrder(order)" style="margin-left: auto;" pTooltip="Delete Order"></button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    }
+                    <p-table [value]="groupedOrders" responsiveLayout="scroll" styleClass="orders-table">
+                        <ng-template #header>
+                            <tr><th>Order #</th><th>Customer</th><th>Date</th><th>Type / Mode</th><th>Amount</th><th>Status</th><th>Actions</th></tr>
+                        </ng-template>
+                        <ng-template #body let-order>
+                            <tr>
+                                <td class="order-id-value">{{ order.orderId }}</td>
+                                <td>{{ order.customer ? (order.customer.firstName + ' ' + order.customer.lastName) : 'Cash' }}</td>
+                                <td>{{ order.createdAt | date: 'dd-MM-yyyy' }}</td>
+                                <td>{{ order.mode === 'delivery' ? 'Delivery' : 'Collection' }}</td>
+                                <td>{{ order.total | currency }}</td>
+                                <td><p-tag [value]="statusLabel(order.orderStatus)" [severity]="statusSeverity(order.orderStatus)"></p-tag></td>
+                                <td class="table-actions">
+                                    <button pButton text icon="pi pi-eye" pTooltip="View order" (click)="viewOrder(order)"></button>
+                                    <button pButton text icon="pi pi-pencil" pTooltip="Edit order" (click)="editOrder(order)"></button>
+                                    <button pButton text [severity]="order.orderStatus === 'completed' ? 'warn' : 'success'" [icon]="order.orderStatus === 'completed' ? 'pi pi-undo' : 'pi pi-credit-card'" [pTooltip]="order.orderStatus === 'completed' ? 'Move back to pending' : 'Checkout order'" (click)="toggleCheckout(order)"></button>
+                                    <button pButton text severity="danger" icon="pi pi-trash" pTooltip="Delete order" (click)="confirmDeleteOrder(order)"></button>
+                                </td>
+                            </tr>
+                        </ng-template>
+                    </p-table>
                 }
             </div>
-            <!-- @if (totalRecords > limit) { -->
             <p-paginator [rows]="limit" [totalRecords]="totalRecords" [rowsPerPageOptions]="[2, 10, 20, 50]" (onPageChange)="onPageChange($event)" styleClass="mt-4"></p-paginator>
-            <!-- } -->
+
+            <p-dialog header="New order" [(visible)]="newOrderDialogVisible" [modal]="true" [style]="{ width: 'min(760px, 94vw)' }">
+                <p class="edit-help">Create an order for an existing customer. Stock is reduced automatically when the order is created.</p>
+                <div class="edit-grid">
+                    <label>Customer<p-select [options]="customerOptions" optionLabel="label" optionValue="value" [(ngModel)]="newOrder.customerId" placeholder="Select customer"></p-select></label>
+                    <label>Order type / mode<p-select [options]="modeOptions" optionLabel="label" optionValue="value" [(ngModel)]="newOrder.mode"></p-select></label>
+                    <label>Payment status<p-select [options]="paymentStatusOptions" optionLabel="label" optionValue="value" [(ngModel)]="newOrder.paymentStatus"></p-select></label>
+                    <label>Order status<p-select [options]="statusOptions" optionLabel="label" optionValue="value" [(ngModel)]="newOrder.orderStatus"></p-select></label>
+                </div>
+                <h4>Order items</h4>
+                <div class="edit-item" *ngFor="let item of newOrder.items; let itemIndex = index"><label>Product ID<p-inputnumber [(ngModel)]="item.productId" [useGrouping]="false"></p-inputnumber></label><label>Quantity<p-inputnumber [(ngModel)]="item.quantity" [min]="1"></p-inputnumber></label><label>Unit price<p-inputnumber [(ngModel)]="item.price" mode="currency" currency="GBP"></p-inputnumber></label><button pButton text severity="danger" icon="pi pi-trash" pTooltip="Remove item" (click)="removeNewItem(itemIndex)"></button></div>
+                <button pButton text icon="pi pi-plus" label="Add item" (click)="addNewItem()"></button>
+                <div class="dialog-actions"><button pButton label="Cancel" severity="secondary" [outlined]="true" (click)="newOrderDialogVisible = false"></button><button pButton label="Create order" icon="pi pi-check" [loading]="creatingOrder" (click)="createNewOrder()"></button></div>
+            </p-dialog>
+
+            <p-dialog header="Order details" [(visible)]="viewDialogVisible" [modal]="true" [style]="{ width: 'min(760px, 94vw)' }">
+                @if (selectedOrder; as order) {
+                    <div class="detail-section">
+                        <h4>Order summary</h4>
+                        <div class="detail-grid"><div><b>Order #</b><span>{{ order.orderId }}</span></div><div><b>Placed</b><span>{{ order.createdAt | date: 'medium' }}</span></div><div><b>Last updated</b><span>{{ order.updatedAt | date: 'medium' }}</span></div><div><b>Type / mode</b><span>{{ order.mode === 'delivery' ? 'Delivery' : 'Collection' }}</span></div><div><b>Order status</b><span><p-tag [value]="statusLabel(order.orderStatus)" [severity]="statusSeverity(order.orderStatus)"></p-tag></span></div><div><b>Payment status</b><span>{{ order.paymentStatus }}</span></div></div>
+                    </div>
+                    <div class="detail-section"><h4>Customer details</h4><p class="detail-value">{{ order.customer?.firstName }} {{ order.customer?.lastName }}</p><p>{{ order.customer?.email }} · {{ order.customer?.phone }}</p><p>{{ order.customer?.address?.street }}, {{ order.customer?.address?.city }}, {{ order.customer?.address?.state }} {{ order.customer?.address?.zipCode }}, {{ order.customer?.address?.country }}</p></div>
+                    <div class="detail-section"><h4>Items in this order</h4><div class="view-item" *ngFor="let item of order.items"><img [src]="item.imageUrl" [alt]="item.name" /><div class="view-item-name"><b>{{ item.name }}</b><small>Product ID: {{ item.id }}<br />{{ item.brand }} · {{ item.category }}</small></div><span>Qty: {{ item.quantity }}</span><span>{{ item.price | currency }} each</span><b>{{ item.price * item.quantity | currency }}</b></div><div class="order-total-row"><b>Order total</b><b>{{ order.total | currency }}</b></div></div>
+                    <div class="detail-section"><h4>Fulfillment details</h4>@if (order.mode === 'delivery') { <p>{{ order.shipping?.firstName }} {{ order.shipping?.lastName }}<br />{{ order.shipping?.shippingAddress }}, {{ order.shipping?.shippingCity }} {{ order.shipping?.shippingZipCode }}</p> } @else { <p>Collection location: {{ order.collection?.collectionLocation }}<br />Date: {{ order.collection?.collectionDate }} · Time: {{ order.collection?.collectionTime }}</p> }</div>
+                }
+            </p-dialog>
+
+            <p-dialog header="Edit order" [(visible)]="editDialogVisible" [modal]="true" [style]="{ width: 'min(900px, 96vw)' }">
+                @if (editModel; as order) {
+                    <p class="edit-help">Update the fields below, then select Save changes. Product ID, quantity, and unit price control the order items and stock.</p>
+                    <div class="edit-grid">
+                        <label>Customer first name<input [(ngModel)]="order.customer.firstName" /></label><label>Customer last name<input [(ngModel)]="order.customer.lastName" /></label>
+                        <label>Customer email<input type="email" [(ngModel)]="order.customer.email" /></label><label>Customer phone<input [(ngModel)]="order.customer.phone" /></label>
+                        <label>Order type / mode<p-select [options]="modeOptions" optionLabel="label" optionValue="value" [(ngModel)]="order.mode"></p-select></label>
+                        <label>Order status<p-select [options]="statusOptions" optionLabel="label" optionValue="value" [(ngModel)]="order.orderStatus"></p-select></label>
+                        <label>Payment status<p-select [options]="paymentStatusOptions" optionLabel="label" optionValue="value" [(ngModel)]="order.paymentStatus"></p-select></label><label>Order total<p-inputnumber [(ngModel)]="order.total" mode="currency" currency="GBP" [disabled]="true"></p-inputnumber></label>
+                        <label>Customer street<input [(ngModel)]="order.customer.address.street" /></label><label>Customer city<input [(ngModel)]="order.customer.address.city" /></label><label>Customer postcode<input [(ngModel)]="order.customer.address.zipCode" /></label><label>Customer country<input [(ngModel)]="order.customer.address.country" /></label>
+                        <label>Delivery first name<input [(ngModel)]="order.shipping.firstName" /></label><label>Delivery last name<input [(ngModel)]="order.shipping.lastName" /></label>
+                        <label>Delivery address<input [(ngModel)]="order.shipping.shippingAddress" /></label><label>Delivery city<input [(ngModel)]="order.shipping.shippingCity" /></label><label>Delivery postcode<input [(ngModel)]="order.shipping.shippingZipCode" /></label>
+                        <label>Collection location<input [(ngModel)]="order.collection.collectionLocation" /></label><label>Collection date<input [(ngModel)]="order.collection.collectionDate" /></label><label>Collection time<input [(ngModel)]="order.collection.collectionTime" /></label>
+                    </div>
+                    <h4>Order items</h4>
+                    <div class="edit-item" *ngFor="let item of order.items; let itemIndex = index"><img [src]="item.imageUrl" [alt]="item.name" /><div class="edit-item-name"><b>{{ item.name }}</b><small>Product ID and total price cannot be changed</small></div><label>Product ID<p-inputnumber [(ngModel)]="item.id" [useGrouping]="false" [disabled]="true"></p-inputnumber></label><label>Quantity<p-inputnumber [(ngModel)]="item.quantity" [min]="1"></p-inputnumber></label><label>Unit price<p-inputnumber [(ngModel)]="item.price" mode="currency" currency="GBP"></p-inputnumber></label><button pButton text severity="danger" icon="pi pi-trash" pTooltip="Remove this item" (click)="removeEditItem(itemIndex)"></button></div>
+                    <div class="dialog-actions"><button pButton label="Cancel" severity="secondary" [outlined]="true" (click)="editDialogVisible = false"></button><button pButton label="Save changes" icon="pi pi-save" [loading]="savingOrder" (click)="saveOrder()"></button></div>
+                }
+            </p-dialog>
         </div>
     `,
     styles: `
@@ -308,6 +245,139 @@ export interface GroupedOrder {
             border-radius: 6px;
             background: var(--p-content-background, #fff);
             color: var(--p-text-color, #374151);
+        }
+        .orders-table-wrap {
+            margin-top: 1.25rem;
+            overflow-x: auto;
+        }
+        .orders-table :host ::ng-deep th {
+            white-space: nowrap;
+        }
+        .table-actions {
+            white-space: nowrap;
+        }
+        .detail-grid,
+        .edit-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 1rem;
+        }
+        .detail-grid div,
+        .edit-grid label {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+        }
+        .detail-grid span,
+        .edit-grid input,
+        .edit-grid p-select,
+        .edit-grid p-inputnumber {
+            color: var(--p-text-color, #374151);
+        }
+        .detail-section {
+            margin-bottom: 1.25rem;
+        }
+        .detail-section h4 {
+            margin: 0 0 0.7rem;
+            color: var(--p-text-color, #1f2937);
+        }
+        .detail-section p {
+            margin: 0.35rem 0;
+            line-height: 1.6;
+            color: var(--p-text-muted-color, #6b7280);
+        }
+        .detail-value {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: var(--p-text-color, #1f2937) !important;
+        }
+        .view-item img,
+        .edit-item img {
+            width: 48px;
+            height: 48px;
+            object-fit: cover;
+            border-radius: 6px;
+            border: 1px solid var(--p-content-border-color, #e5e7eb);
+            flex-shrink: 0;
+        }
+        .view-item,
+        .order-total-row {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.7rem 0;
+            border-bottom: 1px solid var(--p-content-border-color, #e5e7eb);
+        }
+        .view-item-name,
+        .edit-item-name {
+            flex: 1;
+            min-width: 0;
+        }
+        .view-item-name small,
+        .edit-item-name small {
+            display: block;
+            margin-top: 0.2rem;
+            color: var(--p-text-muted-color, #9ca3af);
+        }
+        .order-total-row {
+            justify-content: space-between;
+            border-bottom: 0;
+            font-size: 1.05rem;
+        }
+        .edit-help {
+            margin: 0 0 1rem;
+            color: var(--p-text-muted-color, #6b7280);
+        }
+        .edit-grid input {
+            width: 100%;
+            padding: 0.6rem 0.7rem;
+            border: 1px solid var(--p-content-border-color, #d1d5db);
+            border-radius: 6px;
+            background: var(--p-content-background, #fff);
+        }
+        .detail-item,
+        .edit-item,
+        .dialog-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.65rem 0;
+            border-bottom: 1px solid var(--p-content-border-color, #e5e7eb);
+        }
+        .detail-item span:first-child,
+        .edit-item input:first-child {
+            flex: 1;
+        }
+        .edit-item input {
+            min-width: 0;
+            padding: 0.55rem;
+            border: 1px solid var(--p-content-border-color, #d1d5db);
+            border-radius: 6px;
+        }
+        .edit-item label {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--p-text-muted-color, #6b7280);
+        }
+        .dialog-actions {
+            justify-content: flex-end;
+            border-bottom: 0;
+            margin-top: 1rem;
+        }
+        @media (max-width: 600px) {
+            .order-filters input,
+            .order-filters button,
+            .detail-grid,
+            .edit-grid {
+                width: 100%;
+            }
+            .detail-grid,
+            .edit-grid {
+                grid-template-columns: 1fr;
+            }
         }
         @media (max-width: 600px) {
             .order-filters input,
@@ -615,6 +685,19 @@ export class Orders implements OnInit {
     toDate: Date | null = null;
     orderIdFilter = '';
     customerNameFilter = '';
+    selectedOrder: GroupedOrder | null = null;
+    editModel: EditableOrder | null = null;
+    viewDialogVisible = false;
+    editDialogVisible = false;
+    savingOrder = false;
+    creatingOrder = false;
+    customerOptions: { label: string; value: number }[] = [];
+    newOrderDialogVisible = false;
+    newOrder = this.emptyNewOrder();
+    modeOptions = [
+        { label: 'Delivery', value: 'delivery' },
+        { label: 'Collection', value: 'collection' }
+    ];
     statusOptions: { label: string; value: OrderStatus }[] = [
         { label: 'Pending', value: 'pending' },
         { label: 'Shipped', value: 'shipped' },
@@ -636,6 +719,104 @@ export class Orders implements OnInit {
 
     ngOnInit() {
         this.loadOrders();
+        this.loadCustomers();
+    }
+
+    private emptyNewOrder() {
+        return {
+            customerId: null as number | null,
+            mode: 'delivery' as 'delivery' | 'collection',
+            paymentStatus: 'pending',
+            orderStatus: 'pending' as OrderStatus,
+            items: [{ productId: null as number | null, quantity: 1, price: 0 }]
+        };
+    }
+
+    private loadCustomers() {
+        this.apiService.getUsers().subscribe({
+            next: (res: any) => {
+                const users = res?.data?.users ?? [];
+                this.customerOptions = users.map((user: any) => ({
+                    label: `${user.firstName ?? ''} ${user.lastName ?? ''} (${user.email ?? ''})`.trim(),
+                    value: Number(user.id)
+                }));
+            },
+            error: () => this.customerOptions = []
+        });
+    }
+
+    openNewOrder() {
+        this.newOrder = this.emptyNewOrder();
+        this.newOrderDialogVisible = true;
+    }
+
+    addNewItem() {
+        this.newOrder.items.push({ productId: null, quantity: 1, price: 0 });
+    }
+
+    removeNewItem(index: number) {
+        if (this.newOrder.items.length > 1) this.newOrder.items.splice(index, 1);
+    }
+
+    createNewOrder() {
+        if (!this.newOrder.customerId || this.newOrder.items.some((item) => !item.productId || item.quantity < 1 || item.price < 0)) {
+            this.messageService.add({ severity: 'warn', summary: 'Missing details', detail: 'Select a customer and enter valid product, quantity, and price values.' });
+            return;
+        }
+
+        this.creatingOrder = true;
+        const total = this.newOrder.items.reduce((sum, item) => sum + item.quantity * item.price, 0);
+        this.apiService.createOrder({
+            userId: this.newOrder.customerId,
+            total,
+            mode: this.newOrder.mode,
+            paymentStatus: this.newOrder.paymentStatus,
+            orderStatus: this.newOrder.orderStatus,
+            items: this.newOrder.items.map((item) => ({
+                quantity: item.quantity,
+                product: { id: item.productId, price: item.price }
+            }))
+        }).subscribe({
+            next: () => {
+                this.creatingOrder = false;
+                this.newOrderDialogVisible = false;
+                this.messageService.add({ severity: 'success', summary: 'Created', detail: 'New order created successfully.' });
+                this.loadOrders();
+            },
+            error: (err) => {
+                this.creatingOrder = false;
+                console.error('[Orders] Failed to create order:', err);
+                this.messageService.add({ severity: 'error', summary: 'Error', detail: err?.error?.message ?? 'Failed to create order.' });
+            }
+        });
+    }
+
+    toggleCheckout(order: GroupedOrder) {
+        const completing = order.orderStatus !== 'completed';
+        const nextStatus: OrderStatus = completing ? 'completed' : 'pending';
+        const nextPayment = completing ? 'completed' : 'pending';
+        order.updating = true;
+        this.apiService.approveOrder(order.internalOrderId, nextStatus).subscribe({
+            next: () => this.apiService.updatePaymentStatus(order.internalOrderId, nextPayment).subscribe({
+                next: () => {
+                    order.orderStatus = nextStatus;
+                    order.selectedStatus = nextStatus;
+                    order.paymentStatus = nextPayment;
+                    order.selectedPaymentStatus = nextPayment;
+                    order.updating = false;
+                    this.messageService.add({ severity: 'success', summary: completing ? 'Checked out' : 'Reopened', detail: `Order ${order.orderId} is now ${nextStatus}.` });
+                    this.cd.detectChanges();
+                },
+                error: () => this.checkoutUpdateFailed(order)
+            }),
+            error: () => this.checkoutUpdateFailed(order)
+        });
+    }
+
+    private checkoutUpdateFailed(order: GroupedOrder) {
+        order.updating = false;
+        this.messageService.add({ severity: 'error', summary: 'Error', detail: 'Could not update checkout or payment status.' });
+        this.cd.detectChanges();
     }
 
     onStatusTabChange() {
@@ -711,6 +892,59 @@ export class Orders implements OnInit {
         this.groupedOrders = this.allGroupedOrders.slice(startIndex, endIndex);
     }
 
+    viewOrder(order: GroupedOrder) {
+        this.selectedOrder = order;
+        this.viewDialogVisible = true;
+    }
+
+    editOrder(order: GroupedOrder) {
+        const customer = order.customer ?? {
+            id: 0, firstName: '', lastName: '', email: '', phone: '',
+            address: { street: '', city: '', state: null, zipCode: '', country: '' }
+        };
+        const editableCustomer = {
+            ...customer,
+            address: customer.address ?? { street: '', city: '', state: null, zipCode: '', country: '' }
+        };
+        const editableShipping = order.shipping ?? { firstName: '', lastName: '', shippingAddress: '', shippingCity: '', shippingZipCode: '' };
+        const editableCollection = order.collection ?? { collectionLocation: '', collectionDate: '', collectionTime: '' };
+        this.editModel = structuredClone({ ...order, customer: editableCustomer, shipping: editableShipping, collection: editableCollection }) as EditableOrder;
+        this.editDialogVisible = true;
+    }
+
+    removeEditItem(index: number) {
+        this.editModel?.items.splice(index, 1);
+    }
+
+    saveOrder() {
+        if (!this.editModel) return;
+        this.savingOrder = true;
+        const order = this.editModel;
+        this.apiService.updateOrder(order.internalOrderId, {
+            total: order.total,
+            mode: order.mode,
+            orderStatus: order.orderStatus,
+            paymentStatus: order.paymentStatus,
+            customer: order.customer,
+            shipping: order.shipping,
+            collection: order.collection,
+            items: order.items.map((item) => ({ id: item.id, quantity: item.quantity, price: item.price }))
+        }).subscribe({
+            next: () => {
+                this.savingOrder = false;
+                this.editDialogVisible = false;
+                this.messageService.add({ severity: 'success', summary: 'Updated', detail: 'Order details updated successfully.' });
+                this.loadOrders();
+            },
+            error: (err) => {
+                this.savingOrder = false;
+                console.error('[Orders] Failed to update order:', err);
+                this.messageService.add({ severity: 'error', summary: 'Error', detail: 'Failed to update order details.' });
+                this.cd.detectChanges();
+            }
+        });
+    }
+
     private groupByOrderId(rows: any[]): GroupedOrder[] {
         const map = new Map<string, GroupedOrder>();
 
@@ -737,6 +971,7 @@ export class Orders implements OnInit {
             } else {
                 map.set(orderId, {
                     orderId,
+                    internalOrderId: row.internalOrderId,
                     customer: row.user ?? null,
                     orderStatus: row.orderStatus,
                     paymentStatus: row.paymentStatus,
@@ -822,7 +1057,7 @@ export class Orders implements OnInit {
     private updateOrderStatus(order: GroupedOrder, newStatus: OrderStatus, previousStatus: OrderStatus) {
         order.updating = true;
 
-        this.apiService.approveOrder(order.orderId, newStatus).subscribe({
+        this.apiService.approveOrder(order.internalOrderId, newStatus).subscribe({
             next: () => {
                 order.updating = false;
                 order.orderStatus = newStatus;
@@ -865,7 +1100,7 @@ export class Orders implements OnInit {
     private updatePaymentStatus(order: GroupedOrder, newStatus: string, previousStatus: string) {
         order.updatingPayment = true;
 
-        this.apiService.updatePaymentStatus(order.orderId, newStatus).subscribe({
+        this.apiService.updatePaymentStatus(order.internalOrderId, newStatus).subscribe({
             next: () => {
                 order.updatingPayment = false;
                 order.paymentStatus = newStatus;
@@ -894,7 +1129,7 @@ export class Orders implements OnInit {
 
     private deleteOrder(order: GroupedOrder) {
         order.deleting = true;
-        this.apiService.deleteOrder(order.orderId).subscribe({
+        this.apiService.deleteOrder(order.internalOrderId).subscribe({
             next: () => {
                 order.deleting = false;
                 this.messageService.add({ severity: 'success', summary: 'Deleted', detail: 'Order deleted successfully.' });

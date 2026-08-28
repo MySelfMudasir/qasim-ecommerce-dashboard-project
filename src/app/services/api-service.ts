@@ -78,6 +78,14 @@ export class ApiService {
         return this.http.delete<any>(`${this.baseUrl}/orders/${orderId}`);
     }
 
+    updateOrder(orderId: string, order: any): Observable<any> {
+        return this.http.put<any>(`${this.baseUrl}/orders/${orderId}`, order);
+    }
+
+    createOrder(order: any): Observable<any> {
+        return this.http.post<any>(`${this.baseUrl}/orders/place`, order);
+    }
+
     createCategory(name: string): Observable<any> {
         return this.http.post<any>(`${this.baseUrl}/categories`, { name });
     }

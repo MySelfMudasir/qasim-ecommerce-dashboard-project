@@ -100,14 +100,14 @@ export class AppMenu {
                     //     routerLink: ['/pages/empty']
                     // },
                     { label: 'Products', icon: 'pi pi-fw pi-box', routerLink: ['/pages/products'] },
-                    { label: 'Orders', icon: 'pi pi-fw pi-shopping-cart', routerLink: ['/pages/orders'] },
+                    { label: 'Sales', icon: 'pi pi-fw pi-shopping-cart', routerLink: ['/pages/orders'] },
                     { label: 'Categories', icon: 'pi pi-fw pi-tags', routerLink: ['/pages/categories'] },
                     { label: 'Brands', icon: 'pi pi-fw pi-bookmark', routerLink: ['/pages/brands'] },
 
                     {
                         label: 'Sales Reports',
                         icon: 'pi pi-fw pi-chart-line',
-                        path: '/sales-reports',
+                        path: '/reports',
                         items: [
                             {
                                 label: 'Daily Sales',
