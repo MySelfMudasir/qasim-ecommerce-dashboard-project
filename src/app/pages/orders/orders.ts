@@ -12,6 +12,7 @@ import { TabsModule } from 'primeng/tabs';
 import { ApiService } from '@/app/services/api-service';
 import { PaginatorModule } from 'primeng/paginator';
 import { TooltipModule } from 'primeng/tooltip';
+import { DatePickerModule } from 'primeng/datepicker';
 
 export type OrderStatus = 'pending' | 'shipped' | 'completed' | 'failed';
 
@@ -79,7 +80,7 @@ export interface GroupedOrder {
 
 @Component({
     selector: 'app-orders',
-    imports: [CommonModule, FormsModule, ButtonModule, TagModule, TableModule, ToastModule, ConfirmDialogModule, SelectModule, TabsModule, PaginatorModule, TooltipModule],
+    imports: [CommonModule, FormsModule, ButtonModule, TagModule, TableModule, ToastModule, ConfirmDialogModule, SelectModule, TabsModule, PaginatorModule, TooltipModule, DatePickerModule],
     standalone: true,
     template: `
         <div class="card orders-page">
@@ -88,9 +89,18 @@ export interface GroupedOrder {
 
             <div class="page-header">
                 <div>
-                    <div class="page-title">({{ groupedOrders.length }}) Orders</div>
+                    <div class="page-title">({{ allGroupedOrders.length }}) Orders</div>
                     <div class="page-subtitle">Review and update order status across all customers</div>
                 </div>
+            </div>
+
+            <div class="order-filters">
+                <p-datepicker [(ngModel)]="fromDate" dateFormat="yy-mm-dd" [readonlyInput]="true" [showIcon]="true" placeholder="From date" ariaLabel="From date" />
+                <p-datepicker [(ngModel)]="toDate" dateFormat="yy-mm-dd" [readonlyInput]="true" [showIcon]="true" placeholder="To date" ariaLabel="To date" />
+                <input type="text" [(ngModel)]="orderIdFilter" placeholder="Order ID" aria-label="Order ID" />
+                <input type="text" [(ngModel)]="customerNameFilter" placeholder="Customer name" aria-label="Customer name" />
+                <button pButton type="button" label="Search" icon="pi pi-search" (click)="applyFilters()"></button>
+                <button pButton type="button" label="Clear" severity="secondary" [outlined]="true" icon="pi pi-filter-slash" (click)="clearFilters()"></button>
             </div>
 
             <!-- STATUS TABS -->
@@ -282,6 +292,28 @@ export interface GroupedOrder {
             font-size: 0.85rem;
             color: var(--p-text-muted-color, #9ca3af);
             margin-top: 0.15rem;
+        }
+
+        .order-filters {
+            display: flex;
+            align-items: center;
+            gap: 0.65rem;
+            flex-wrap: wrap;
+            margin: 1rem 0;
+        }
+        .order-filters input {
+            min-width: 150px;
+            padding: 0.65rem 0.75rem;
+            border: 1px solid var(--p-content-border-color, #d1d5db);
+            border-radius: 6px;
+            background: var(--p-content-background, #fff);
+            color: var(--p-text-color, #374151);
+        }
+        @media (max-width: 600px) {
+            .order-filters input,
+            .order-filters button {
+                width: 100%;
+            }
         }
 
         .orders-list {
@@ -579,6 +611,10 @@ export class Orders implements OnInit {
     limit = 2;
     totalRecords = 0;
     activeStatus: 'all' | OrderStatus = 'all';
+    fromDate: Date | null = null;
+    toDate: Date | null = null;
+    orderIdFilter = '';
+    customerNameFilter = '';
     statusOptions: { label: string; value: OrderStatus }[] = [
         { label: 'Pending', value: 'pending' },
         { label: 'Shipped', value: 'shipped' },
@@ -607,12 +643,30 @@ export class Orders implements OnInit {
         this.loadOrders();
     }
 
+    applyFilters() {
+        this.page = 1;
+        this.loadOrders();
+    }
+
+    clearFilters() {
+        this.fromDate = null;
+        this.toDate = null;
+        this.orderIdFilter = '';
+        this.customerNameFilter = '';
+        this.applyFilters();
+    }
+
     loadOrders() {
         this.loading = true;
 
         // Fetch a large number of items to ensure we get all records,
         // then we group them by orderId and do pagination locally on the frontend.
-        this.apiService.getAdminOrders(this.activeStatus, 1, 10000).subscribe({
+        this.apiService.getAdminOrders(this.activeStatus, 1, 10000, {
+            fromDate: this.formatDate(this.fromDate),
+            toDate: this.formatDate(this.toDate),
+            orderId: this.orderIdFilter.trim() || undefined,
+            customerName: this.customerNameFilter.trim() || undefined
+        }).subscribe({
             next: (res: any) => {
                 const raw = res?.data?.orders ?? [];
 
@@ -640,6 +694,15 @@ export class Orders implements OnInit {
                 this.cd.detectChanges();
             }
         });
+    }
+
+    private formatDate(date: Date | null): string | undefined {
+        if (!date) return undefined;
+
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
     }
 
     private updatePage() {

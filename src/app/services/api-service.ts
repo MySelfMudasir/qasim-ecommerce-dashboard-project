@@ -6,8 +6,8 @@ import { Observable } from 'rxjs';
     providedIn: 'root'
 })
 export class ApiService {
-    // private baseUrl = `https://qasim-ecommerce-backend-project.onrender.com/api`;
-    private baseUrl = `http://localhost:3000/api`;
+    private baseUrl = `https://qasim-ecommerce-backend-project.onrender.com/api`;
+    // private baseUrl = `http://localhost:3000/api`;
 
     constructor(private http: HttpClient) {}
 
@@ -61,8 +61,8 @@ export class ApiService {
         return this.http.delete<any>(`${this.baseUrl}/products/${id}`);
     }
 
-    getAdminOrders(orderStatus: string, page: number, limit: number): Observable<any> {
-        return this.http.post<any>(`${this.baseUrl}/orders/getOrders`, { orderStatus, page, limit });
+    getAdminOrders(orderStatus: string, page: number, limit: number, filters: { fromDate?: string; toDate?: string; orderId?: string; customerName?: string } = {}): Observable<any> {
+        return this.http.post<any>(`${this.baseUrl}/orders/getOrders`, { orderStatus, page, limit, ...filters });
     }
 
     // Confirmed body shape: { orderId: string (uuid), orderStatus: string }
