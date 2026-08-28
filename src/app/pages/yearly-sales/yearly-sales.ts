@@ -11,6 +11,7 @@ import { CheckboxModule } from 'primeng/checkbox';
 import { IconFieldModule } from 'primeng/iconfield';
 import { InputIconModule } from 'primeng/inputicon';
 import { ApiService } from '@/app/services/api-service';
+import { InvoicePrintComponent } from '../invoice-print-component/invoice-print-component';
 
 // Matches confirmed real response shape - camelCase throughout.
 // Note: response field is `total` (number), not `"total"` string - no conversion needed.
@@ -106,16 +107,20 @@ const ALL_EXPORT_COLUMNS: { field: keyof FlatExportRow; label: string }[] = [
 
 @Component({
     selector: 'app-yearly-sales',
-    imports: [CommonModule, FormsModule, ButtonModule, TableModule, TagModule, InputTextModule, DatePickerModule, DialogModule, CheckboxModule, IconFieldModule, InputIconModule],
+    imports: [CommonModule, FormsModule, ButtonModule, TableModule, TagModule, InputTextModule, DatePickerModule, DialogModule, CheckboxModule, IconFieldModule, InputIconModule, InvoicePrintComponent],
     standalone: true,
     template: `
+        <app-invoice-print [orders]="filteredOrders" [visible]="invoiceVisible" (close)="invoiceVisible = false"> </app-invoice-print>
         <div class="card sales-card">
             <div class="page-header">
                 <div class="page-header-text">
                     <div class="page-title">Yearly Sales Report</div>
                     <div class="page-subtitle">Filter by date range, search records, and export to CSV</div>
                 </div>
-                <button pButton label="Export CSV" icon="pi pi-download" severity="secondary" class="export-btn" (click)="openExportDialog()"></button>
+                <div class="flex gap-2">
+                    <button pButton label="Export CSV" icon="pi pi-download" severity="secondary" class="export-btn" (click)="openExportDialog()"></button>
+                    <button pButton label="Print All" icon="pi pi-print" severity="secondary" (click)="invoiceVisible = true"></button>
+                </div>
             </div>
 
             <!-- FILTERS
@@ -628,6 +633,7 @@ export class YearlySales implements OnInit {
 
     // Computed from loaded grouped orders - no summary block in this API response
     computedTotalRevenue = 0;
+    invoiceVisible = false;
 
     exportDialogVisible = false;
     exportColumns: { field: keyof FlatExportRow; label: string; selected: boolean }[] = [];

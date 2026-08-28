@@ -4,8 +4,8 @@ import { Observable, tap, throwError, map } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 
 
-// const AUTH_BASE_URL = 'http://localhost:3000/api/admin/auth';
-const AUTH_BASE_URL = 'https://qasim-ecommerce-backend-project.onrender.com/api/admin/auth';
+const AUTH_BASE_URL = 'http://localhost:3000/api/admin/auth';
+// const AUTH_BASE_URL = 'https://qasim-ecommerce-backend-project.onrender.com/api/admin/auth';
 const TOKEN_STORAGE_KEY = 'admin_auth_token';
 const USER_STORAGE_KEY = 'admin_auth_user';
 
