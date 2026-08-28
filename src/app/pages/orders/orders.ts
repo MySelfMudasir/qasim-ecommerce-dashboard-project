@@ -11,6 +11,7 @@ import { SelectModule } from 'primeng/select';
 import { TabsModule } from 'primeng/tabs';
 import { ApiService } from '@/app/services/api-service';
 import { PaginatorModule } from 'primeng/paginator';
+import { TooltipModule } from 'primeng/tooltip';
 
 export type OrderStatus = 'pending' | 'shipped' | 'completed' | 'failed';
 
@@ -69,13 +70,16 @@ export interface GroupedOrder {
     total: number;
     selectedStatus: OrderStatus; // dropdown value, separate from orderStatus until "Update" is clicked
     updating: boolean;
+    selectedPaymentStatus: string; // dropdown value for payment status
+    updatingPayment: boolean;
+    deleting: boolean;
     createdAt: Date; // ISO date string, from the first line item in the order
     updatedAt: Date; // ISO date string, from the first line item in the order
 }
 
 @Component({
     selector: 'app-orders',
-    imports: [CommonModule, FormsModule, ButtonModule, TagModule, TableModule, ToastModule, ConfirmDialogModule, SelectModule, TabsModule, PaginatorModule],
+    imports: [CommonModule, FormsModule, ButtonModule, TagModule, TableModule, ToastModule, ConfirmDialogModule, SelectModule, TabsModule, PaginatorModule, TooltipModule],
     standalone: true,
     template: `
         <div class="card orders-page">
@@ -219,7 +223,21 @@ export interface GroupedOrder {
 
                                     <div class="order-actions">
                                         <div class="action-control">
-                                            <label class="action-label">Change status to</label>
+                                            <label class="action-label">Payment status</label>
+                                            <p-select [options]="paymentStatusOptions" optionLabel="label" optionValue="value" [(ngModel)]="order.selectedPaymentStatus" [disabled]="order.updatingPayment" class="status-select"> </p-select>
+                                        </div>
+                                        <button
+                                            pButton
+                                            [label]="order.selectedPaymentStatus === order.paymentStatus ? 'No changes' : 'Update payment'"
+                                            icon="pi pi-check"
+                                            [loading]="order.updatingPayment"
+                                            [disabled]="order.selectedPaymentStatus === order.paymentStatus"
+                                            (click)="confirmPaymentStatusUpdate(order)"
+                                            severity="secondary"
+                                        ></button>
+                                        
+                                        <div class="action-control">
+                                            <label class="action-label">Order status</label>
                                             <p-select [options]="statusOptions" optionLabel="label" optionValue="value" [(ngModel)]="order.selectedStatus" [disabled]="order.updating" class="status-select"> </p-select>
                                         </div>
                                         <button
@@ -229,6 +247,16 @@ export interface GroupedOrder {
                                             [loading]="order.updating"
                                             [disabled]="order.selectedStatus === order.orderStatus"
                                             (click)="confirmStatusUpdate(order)"
+                                        ></button>
+
+                                        <button
+                                            pButton
+                                            icon="pi pi-trash"
+                                            severity="danger"
+                                            [loading]="order.deleting"
+                                            (click)="confirmDeleteOrder(order)"
+                                            style="margin-left: auto;"
+                                            pTooltip="Delete Order"
                                         ></button>
                                     </div>
                                 </div>
@@ -552,6 +580,7 @@ export interface GroupedOrder {
     providers: [ConfirmationService, MessageService]
 })
 export class Orders implements OnInit {
+    allGroupedOrders: GroupedOrder[] = [];
     rawOrders: any[] = [];
     groupedOrders: GroupedOrder[] = [];
     loading = true;
@@ -562,6 +591,11 @@ export class Orders implements OnInit {
     statusOptions: { label: string; value: OrderStatus }[] = [
         { label: 'Pending', value: 'pending' },
         { label: 'Shipped', value: 'shipped' },
+        { label: 'Completed', value: 'completed' },
+        { label: 'Failed', value: 'failed' }
+    ];
+    paymentStatusOptions: { label: string; value: string }[] = [
+        { label: 'Pending', value: 'pending' },
         { label: 'Completed', value: 'completed' },
         { label: 'Failed', value: 'failed' }
     ];
@@ -585,21 +619,26 @@ export class Orders implements OnInit {
     loadOrders() {
         this.loading = true;
 
-        this.apiService.getAdminOrders(this.activeStatus, this.page, this.limit).subscribe({
+        // Fetch a large number of items to ensure we get all records,
+        // then we group them by orderId and do pagination locally on the frontend.
+        this.apiService.getAdminOrders(this.activeStatus, 1, 10000).subscribe({
             next: (res: any) => {
                 const raw = res?.data?.orders ?? [];
-                const pagination = res?.data?.pagination;
 
                 if (!Array.isArray(raw)) {
                     console.warn('[Orders] Unexpected shape:', res);
+                    this.allGroupedOrders = [];
                     this.groupedOrders = [];
+                    this.totalRecords = 0;
                     this.loading = false;
                     this.cd.detectChanges();
                     return;
                 }
 
-                this.groupedOrders = this.groupByOrderId(raw);
-                this.totalRecords = pagination?.total ?? this.groupedOrders.length;
+                this.allGroupedOrders = this.groupByOrderId(raw);
+                this.totalRecords = this.allGroupedOrders.length;
+                this.updatePage();
+                
                 this.loading = false;
                 this.cd.detectChanges();
             },
@@ -610,6 +649,12 @@ export class Orders implements OnInit {
                 this.cd.detectChanges();
             }
         });
+    }
+
+    private updatePage() {
+        const startIndex = (this.page - 1) * this.limit;
+        const endIndex = startIndex + this.limit;
+        this.groupedOrders = this.allGroupedOrders.slice(startIndex, endIndex);
     }
 
     private groupByOrderId(rows: any[]): GroupedOrder[] {
@@ -648,6 +693,9 @@ export class Orders implements OnInit {
                     total: item.price * item.quantity,
                     selectedStatus: row.orderStatus,
                     updating: false,
+                    selectedPaymentStatus: row.paymentStatus,
+                    updatingPayment: false,
+                    deleting: false,
                     createdAt: row.createdAt,
                     updatedAt: row.updatedAt
                 });
@@ -660,7 +708,7 @@ export class Orders implements OnInit {
     onPageChange(event: any) {
         this.page = Math.floor(event.first / event.rows) + 1;
         this.limit = event.rows;
-        this.loadOrders();
+        this.updatePage();
     }
 
     statusLabel(status: OrderStatus): string {
@@ -739,6 +787,76 @@ export class Orders implements OnInit {
                 order.selectedStatus = previousStatus; // revert the dropdown, orderStatus never changed
                 console.error('[Orders] Status update failed:', err);
                 this.messageService.add({ severity: 'error', summary: 'Error', detail: 'Failed to update order status.' });
+                this.cd.detectChanges();
+            }
+        });
+    }
+
+    confirmPaymentStatusUpdate(order: GroupedOrder) {
+        const newStatus = order.selectedPaymentStatus;
+        const previousStatus = order.paymentStatus;
+        if (newStatus === previousStatus) return;
+
+        this.confirmationService.confirm({
+            header: 'Confirm Payment Status Change',
+            message: `Change payment status for order ${order.orderId} from "${previousStatus}" to "${newStatus}"?`,
+            icon: 'pi pi-exclamation-triangle',
+            accept: () => this.updatePaymentStatus(order, newStatus, previousStatus),
+            reject: () => {
+                order.selectedPaymentStatus = previousStatus;
+            }
+        });
+    }
+
+    private updatePaymentStatus(order: GroupedOrder, newStatus: string, previousStatus: string) {
+        order.updatingPayment = true;
+
+        this.apiService.updatePaymentStatus(order.orderId, newStatus).subscribe({
+            next: () => {
+                order.updatingPayment = false;
+                order.paymentStatus = newStatus;
+                order.selectedPaymentStatus = newStatus;
+                this.messageService.add({ severity: 'success', summary: 'Updated', detail: `Payment status moved to "${newStatus}".` });
+                this.cd.detectChanges();
+            },
+            error: (err) => {
+                order.updatingPayment = false;
+                order.selectedPaymentStatus = previousStatus;
+                console.error('[Orders] Payment status update failed:', err);
+                this.messageService.add({ severity: 'error', summary: 'Error', detail: 'Failed to update payment status.' });
+                this.cd.detectChanges();
+            }
+        });
+    }
+
+    confirmDeleteOrder(order: GroupedOrder) {
+        this.confirmationService.confirm({
+            header: 'Confirm Delete Order',
+            message: `Are you sure you want to permanently delete order ${order.orderId}?`,
+            icon: 'pi pi-exclamation-triangle',
+            accept: () => this.deleteOrder(order)
+        });
+    }
+
+    private deleteOrder(order: GroupedOrder) {
+        order.deleting = true;
+        this.apiService.deleteOrder(order.orderId).subscribe({
+            next: () => {
+                order.deleting = false;
+                this.messageService.add({ severity: 'success', summary: 'Deleted', detail: 'Order deleted successfully.' });
+                
+                // Remove the order from allGroupedOrders and update the page locally.
+                // We do this instead of calling loadOrders() to avoid fetching all 10000 records again unnecessarily.
+                this.allGroupedOrders = this.allGroupedOrders.filter((o) => o.orderId !== order.orderId);
+                this.totalRecords = this.allGroupedOrders.length;
+                this.updatePage();
+                
+                this.cd.detectChanges();
+            },
+            error: (err) => {
+                order.deleting = false;
+                console.error('[Orders] Failed to delete order:', err);
+                this.messageService.add({ severity: 'error', summary: 'Error', detail: 'Failed to delete order.' });
                 this.cd.detectChanges();
             }
         });

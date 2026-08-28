@@ -70,6 +70,14 @@ export class ApiService {
         return this.http.post<any>(`${this.baseUrl}/orders/approveOrder`, { orderId, orderStatus });
     }
 
+    updatePaymentStatus(orderId: string, paymentStatus: string): Observable<any> {
+        return this.http.post<any>(`${this.baseUrl}/orders/updatePaymentStatus`, { orderId, paymentStatus });
+    }
+
+    deleteOrder(orderId: string): Observable<any> {
+        return this.http.delete<any>(`${this.baseUrl}/orders/${orderId}`);
+    }
+
     createCategory(name: string): Observable<any> {
         return this.http.post<any>(`${this.baseUrl}/categories`, { name });
     }
