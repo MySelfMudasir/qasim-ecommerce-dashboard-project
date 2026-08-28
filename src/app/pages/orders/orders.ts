@@ -233,9 +233,8 @@ export interface GroupedOrder {
                                             [loading]="order.updatingPayment"
                                             [disabled]="order.selectedPaymentStatus === order.paymentStatus"
                                             (click)="confirmPaymentStatusUpdate(order)"
-                                            severity="secondary"
                                         ></button>
-                                        
+
                                         <div class="action-control">
                                             <label class="action-label">Order status</label>
                                             <p-select [options]="statusOptions" optionLabel="label" optionValue="value" [(ngModel)]="order.selectedStatus" [disabled]="order.updating" class="status-select"> </p-select>
@@ -249,15 +248,7 @@ export interface GroupedOrder {
                                             (click)="confirmStatusUpdate(order)"
                                         ></button>
 
-                                        <button
-                                            pButton
-                                            icon="pi pi-trash"
-                                            severity="danger"
-                                            [loading]="order.deleting"
-                                            (click)="confirmDeleteOrder(order)"
-                                            style="margin-left: auto;"
-                                            pTooltip="Delete Order"
-                                        ></button>
+                                        <button pButton icon="pi pi-trash" severity="danger" [loading]="order.deleting" (click)="confirmDeleteOrder(order)" style="margin-left: auto;" pTooltip="Delete Order"></button>
                                     </div>
                                 </div>
                             </div>
@@ -266,7 +257,7 @@ export interface GroupedOrder {
                 }
             </div>
             <!-- @if (totalRecords > limit) { -->
-                <p-paginator [rows]="limit" [totalRecords]="totalRecords" [rowsPerPageOptions]="[2, 10, 20, 50]" (onPageChange)="onPageChange($event)" styleClass="mt-4"></p-paginator>
+            <p-paginator [rows]="limit" [totalRecords]="totalRecords" [rowsPerPageOptions]="[2, 10, 20, 50]" (onPageChange)="onPageChange($event)" styleClass="mt-4"></p-paginator>
             <!-- } -->
         </div>
     `,
@@ -638,7 +629,7 @@ export class Orders implements OnInit {
                 this.allGroupedOrders = this.groupByOrderId(raw);
                 this.totalRecords = this.allGroupedOrders.length;
                 this.updatePage();
-                
+
                 this.loading = false;
                 this.cd.detectChanges();
             },
@@ -844,13 +835,13 @@ export class Orders implements OnInit {
             next: () => {
                 order.deleting = false;
                 this.messageService.add({ severity: 'success', summary: 'Deleted', detail: 'Order deleted successfully.' });
-                
+
                 // Remove the order from allGroupedOrders and update the page locally.
                 // We do this instead of calling loadOrders() to avoid fetching all 10000 records again unnecessarily.
                 this.allGroupedOrders = this.allGroupedOrders.filter((o) => o.orderId !== order.orderId);
                 this.totalRecords = this.allGroupedOrders.length;
                 this.updatePage();
-                
+
                 this.cd.detectChanges();
             },
             error: (err) => {
