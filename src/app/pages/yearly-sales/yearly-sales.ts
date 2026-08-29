@@ -71,7 +71,7 @@ interface GroupedSaleOrder {
     collection: SaleLineItem['collection'];
 }
 
-// Flat row for the export CSV - one row per grouped order, not per line item.
+// Flat row for the Export Excel - one row per grouped order, not per line item.
 // ALL_EXPORT_COLUMNS keys must exist on FlatExportRow.
 interface FlatExportRow {
     orderId: string;
@@ -118,7 +118,7 @@ const ALL_EXPORT_COLUMNS: { field: keyof FlatExportRow; label: string }[] = [
                     <div class="page-subtitle">Filter by date range, search records, and export to CSV</div>
                 </div>
                 <div class="flex gap-2">
-                    <button pButton label="Export CSV" icon="pi pi-download" severity="secondary" class="export-btn" (click)="openExportDialog()"></button>
+                    <button pButton label="Export Excel" icon="pi pi-download" severity="secondary" class="export-btn" (click)="openExportDialog()"></button>
                     <button pButton label="Print All" icon="pi pi-print" severity="secondary" (click)="invoiceVisible = true"></button>
                 </div>
             </div>

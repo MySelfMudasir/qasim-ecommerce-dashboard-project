@@ -98,7 +98,7 @@ type EditableOrder = Omit<GroupedOrder, 'customer' | 'shipping' | 'collection'> 
 
             <div class="page-header">
                 <div>
-                    <div class="page-title">({{ allGroupedOrders.length }}) Orders</div>
+                    <div class="page-title">({{ totalRecords }}) Orders</div>
                     <div class="page-subtitle">Review and update order status across all customers</div>
                 </div>
                 <button pButton type="button" label="New Order" icon="pi pi-plus" (click)="openNewOrder()"></button>
@@ -840,9 +840,7 @@ export class Orders implements OnInit {
     loadOrders() {
         this.loading = true;
 
-        // Fetch a large number of items to ensure we get all records,
-        // then we group them by orderId and do pagination locally on the frontend.
-        this.apiService.getAdminOrders(this.activeStatus, 1, 10000, {
+        this.apiService.getAdminOrders(this.activeStatus, this.page, this.limit, {
             fromDate: this.formatDate(this.fromDate),
             toDate: this.formatDate(this.toDate),
             orderId: this.orderIdFilter.trim() || undefined,
@@ -862,8 +860,8 @@ export class Orders implements OnInit {
                 }
 
                 this.allGroupedOrders = this.groupByOrderId(raw);
-                this.totalRecords = this.allGroupedOrders.length;
-                this.updatePage();
+                this.groupedOrders = this.allGroupedOrders;
+                this.totalRecords = res?.data?.pagination?.total ?? this.allGroupedOrders.length;
 
                 this.loading = false;
                 this.cd.detectChanges();
@@ -887,9 +885,7 @@ export class Orders implements OnInit {
     }
 
     private updatePage() {
-        const startIndex = (this.page - 1) * this.limit;
-        const endIndex = startIndex + this.limit;
-        this.groupedOrders = this.allGroupedOrders.slice(startIndex, endIndex);
+        this.loadOrders();
     }
 
     viewOrder(order: GroupedOrder) {
@@ -997,7 +993,7 @@ export class Orders implements OnInit {
     onPageChange(event: any) {
         this.page = Math.floor(event.first / event.rows) + 1;
         this.limit = event.rows;
-        this.updatePage();
+        this.loadOrders();
     }
 
     statusLabel(status: OrderStatus): string {
@@ -1134,11 +1130,7 @@ export class Orders implements OnInit {
                 order.deleting = false;
                 this.messageService.add({ severity: 'success', summary: 'Deleted', detail: 'Order deleted successfully.' });
 
-                // Remove the order from allGroupedOrders and update the page locally.
-                // We do this instead of calling loadOrders() to avoid fetching all 10000 records again unnecessarily.
-                this.allGroupedOrders = this.allGroupedOrders.filter((o) => o.orderId !== order.orderId);
-                this.totalRecords = this.allGroupedOrders.length;
-                this.updatePage();
+                this.loadOrders();
 
                 this.cd.detectChanges();
             },
